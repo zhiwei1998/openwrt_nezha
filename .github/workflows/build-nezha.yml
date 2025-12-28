@@ -139,26 +139,24 @@ jobs:
         # 获取最新的Nezha Agent版本
         NEZHA_VERSION=$(curl -m 10 -sL "https://api.github.com/repos/nezhahq/agent/releases/latest" | grep "tag_name" | head -n 1 | awk -F ":" '{print $2}' | sed 's/"//g;s/,//g;s/ //g')
         echo "::set-output name=release_tag::${NEZHA_VERSION}-$(date +'%Y%m%d')"
-        # 生成发布说明
-        cat > release.txt << EOF
-## NeZha Agent OpenWrt Packages Build
-
-**Build Date:** $(date +'%Y-%m-%d %H:%M:%S %Z')
-
-**Nezha Agent Version:** ${NEZHA_VERSION}
-
-**OpenWrt Version:** ${REPO_CHECKOUT}
-
-**Supported Architectures:**
-- x86_64
-- aarch64_generic
-- aarch64_cortex-a53
-
-**Packages Included:**
-- nezha-agent
-- luci-app-nezha-agent-v1
-- lyaml (dependency)
-EOF
+        # Generate release notes
+        echo "## NeZha Agent OpenWrt Packages Build" > release.txt
+        echo "" >> release.txt
+        echo "**Build Date:** $(date +'%Y-%m-%d %H:%M:%S %Z')" >> release.txt
+        echo "" >> release.txt
+        echo "**Nezha Agent Version:** ${NEZHA_VERSION}" >> release.txt
+        echo "" >> release.txt
+        echo "**OpenWrt Version:** ${REPO_CHECKOUT}" >> release.txt
+        echo "" >> release.txt
+        echo "**Supported Architectures:**" >> release.txt
+        echo "- x86_64" >> release.txt
+        echo "- aarch64_generic" >> release.txt
+        echo "- aarch64_cortex-a53" >> release.txt
+        echo "" >> release.txt
+        echo "**Packages Included:**" >> release.txt
+        echo "- nezha-agent" >> release.txt
+        echo "- luci-app-nezha-agent-v1" >> release.txt
+        echo "- lyaml (dependency)" >> release.txt
         echo "::set-output name=status::success"
 
     - name: Upload packages to release
