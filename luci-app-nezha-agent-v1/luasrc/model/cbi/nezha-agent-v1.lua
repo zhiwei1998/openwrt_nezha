@@ -83,6 +83,7 @@ function m.on_commit(self)
         disable_command_execute = uci:get("nezha-agent-v1", "config", "disable_command_execute") == "1",
         disable_force_update = uci:get("nezha-agent-v1", "config", "disable_force_update") == "1",
         disable_nat = uci:get("nezha-agent-v1", "config", "disable_nat") == "1",
+        temperature = uci:get("nezha-agent-v1", "config", "temperature") == "1",
         report_delay = tonumber(uci:get("nezha-agent-v1", "config", "report_delay")) or 3,
         ip_report_period = tonumber(uci:get("nezha-agent-v1", "config", "ip_report_period")) or 1800,
         
@@ -91,7 +92,6 @@ function m.on_commit(self)
         gpu = false,
         skip_connection_count = false,
         skip_procs_count = false,
-        temperature = false,
         use_gitee_to_upgrade = false,
         use_ipv6_country_code = false,
         self_update_period = 0
@@ -156,9 +156,13 @@ o = s:taboption("advanced", Flag, "disable_command_execute", translate("禁用�
 o.default = config.disable_command_execute or false
 
 o = s:taboption("advanced", Flag, "disable_force_update", translate("禁用强制更新"))
-o = s:taboption("advanced", Flag, "disable_nat", translate("禁用 NAT 支持"))
 o.default = config.disable_force_update or false
+
+o = s:taboption("advanced", Flag, "disable_nat", translate("禁用 NAT 支持"))
 o.default = config.disable_nat or false
+
+o = s:taboption("advanced", Flag, "temperature", translate("启用温度监控"))
+o.default = config.temperature or false
 
 o = s:taboption("advanced", Value, "report_delay", translate("报告延迟(秒)"))
 o.default = config.report_delay or 3
