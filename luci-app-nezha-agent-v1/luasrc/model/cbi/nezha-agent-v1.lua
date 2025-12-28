@@ -34,32 +34,37 @@ end
 local function write_yaml(data)
     local f = io.open("/etc/config/nz.yml", "w")
     if f then
-        local yaml_content = ""
-        local sorted_keys = {}
-        for k in pairs(data) do
-            table.insert(sorted_keys, k)
-        end
-        table.sort(sorted_keys)
-        
-        for _, k in ipairs(sorted_keys) do
-            local v = data[k]
-            if type(v) == "boolean" then
-                yaml_content = yaml_content .. k .. ": " .. (v and "true" or "false") .. "\n"
-            elseif type(v) == "number" then
-                yaml_content = yaml_content .. k .. ": " .. tostring(v) .. "\n"
-            else
-                if type(v) == "string" and (v:find("[ :]") or v == "") then
-                    yaml_content = yaml_content .. k .. ": \"" .. tostring(v) .. "\"\n"
-                else
-                    yaml_content = yaml_content .. k .. ": " .. tostring(v) .. "\n"
-                end
-            end
-        end
-        
+        -- 使用lyaml.dump处理复杂类型（数组和对象）
+        local yaml_content = yaml.dump({data})
         f:write(yaml_content)
         f:close()
         
         nixio.syslog("debug", "Writing to nz.yml: " .. yaml_content)
+        
+        return true
+    end
+    return false
+end
+
+local function read_other_yaml()
+    local f = io.open("/usr/share/nezha/other.yml", "r")
+    if f then
+        local content = f:read("*all")
+        f:close()
+        return yaml.load(content) or {}
+    end
+    return {}
+end
+
+local function write_other_yaml(data)
+    local f = io.open("/usr/share/nezha/other.yml", "w")
+    if f then
+        -- 使用lyaml.dump处理复杂类型（数组和对象）
+        local yaml_content = yaml.dump({data})
+        f:write(yaml_content)
+        f:close()
+        
+        nixio.syslog("debug", "Writing to other.yml: " .. yaml_content)
         
         return true
     end
@@ -87,15 +92,30 @@ function m.on_commit(self)
         skip_procs_count = uci:get("nezha-agent-v1", "config", "skip_procs_count") == "1",
         skip_connection_count = uci:get("nezha-agent-v1", "config", "skip_connection_count") == "1",
         report_delay = tonumber(uci:get("nezha-agent-v1", "config", "report_delay")) or 3,
-        ip_report_period = tonumber(uci:get("nezha-agent-v1", "config", "ip_report_period")) or 1800,
-        
-        -- 其他固定配置
-        disable_send_query = false,
-        gpu = false,
-        use_gitee_to_upgrade = false,
-        use_ipv6_country_code = false,
-        self_update_period = 0
+        ip_report_period = tonumber(uci:get("nezha-agent-v1", "config", "ip_report_period")) or 1800
     }
+    
+    -- 读取other.yml中的默认配置
+    local other_config = read_other_yaml() or {}
+    
+    -- 读取UCI中的其他配置项
+    local uci_other_config = uci:get_all("nezha-agent-v1", "config") or {}
+    
+    -- 合并配置：UCI配置优先于other.yml默认值
+    for key, value in pairs(other_config) do
+        if uci_other_config[key] ~= nil then
+            -- 根据配置类型转换值
+            if type(value) == "boolean" then
+                data[key] = uci_other_config[key] == "1"
+            elseif type(value) == "number" then
+                data[key] = tonumber(uci_other_config[key]) or value
+            else
+                data[key] = uci_other_config[key]
+            end
+        else
+            data[key] = value
+        end
+    end
 
     -- 删除旧的 YAML 文件
     os.remove("/etc/config/nz.yml")
@@ -146,6 +166,9 @@ o.rmempty = false
 -- 高级设置
 s:tab("advanced", translate("高级设置"))
 
+-- 其它设置
+s:tab("other", translate("其它设置"))
+
 o = s:taboption("advanced", Flag, "debug", translate("调试模式"))
 o.default = config.debug or false
 
@@ -177,5 +200,42 @@ o.datatype = "uinteger"
 o = s:taboption("advanced", Value, "ip_report_period", translate("IP报告周期(秒)"))
 o.default = config.ip_report_period or 1800
 o.datatype = "uinteger"
+
+-- 动态生成其它设置表单字段
+local other_config = read_other_yaml() or {}
+local uci_cursor = require "luci.model.uci".cursor()
+
+-- 配置项的中文翻译映射
+local translation_map = {
+    disable_send_query = translate("禁用发送查询"),
+    gpu = translate("GPU监控"),
+    use_gitee_to_upgrade = translate("使用Gitee进行升级"),
+    use_ipv6_country_code = translate("使用IPv6国家代码"),
+    self_update_period = translate("自动更新周期(秒)")
+}
+
+-- 动态生成表单字段
+for key, default_value in pairs(other_config) do
+    local translation = translation_map[key] or key
+    local uci_value = uci_cursor:get("nezha-agent-v1", "config", key)
+    
+    -- 跳过数组和对象类型的配置项（仅通过配置文件修改）
+    if type(default_value) ~= "table" then
+        if type(default_value) == "boolean" then
+            -- 布尔类型使用Flag组件
+            local o = s:taboption("other", Flag, key, translation)
+            o.default = (uci_value == "1") or default_value
+        elseif type(default_value) == "number" then
+            -- 数字类型使用Value组件
+            local o = s:taboption("other", Value, key, translation)
+            o.default = tonumber(uci_value) or default_value
+            o.datatype = "uinteger"
+        else
+            -- 其他类型使用Value组件
+            local o = s:taboption("other", Value, key, translation)
+            o.default = uci_value or default_value
+        end
+    end
+end
 
 return m

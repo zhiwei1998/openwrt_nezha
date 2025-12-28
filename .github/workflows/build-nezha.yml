@@ -19,33 +19,51 @@ on:
         description: 'SSH connection to Actions'
         required: false
         default: 'false'
+  push:
+    branches:
+      - main
+      - dev
+    paths:
+      - '**/*.lua'
+      - '**/*.yml'
+      - '**/*.config'
+      - '**/*.mk'
+      - '**/Makefile'
 
 env:
   REPO_URL: https://git.openwrt.org/openwrt/openwrt.git
   REPO_CHECKOUT: v24.10.0
   FEEDS_CONF: feeds.conf.default
-  CONFIG_FILE: configs/x86_64.config
   UPLOAD_BIN_DIR: true
   UPLOAD_RELEASE: true
   TZ: Asia/Shanghai
+  FILE_DATE: $(date +"%Y%m%d_%H%M%S")
 
 jobs:
   build:
     runs-on: ovh
+    strategy:
+      matrix:
+        arch: [x86_64, aarch64_generic, aarch64_cortex-a53]
+      fail-fast: false
 
     steps:
     - name: Checkout
       uses: actions/checkout@main
 
-    - name: Clone source code
+    - name: Set up environment
       run: |
         df -hT $PWD
+        echo "FILE_DATE=$(date +'%Y%m%d_%H%M%S')" >> $GITHUB_ENV
+
+    - name: Clone OpenWrt source code
+      run: |
         git clone $REPO_URL openwrt
-        ln -sf ./openwrt $GITHUB_WORKSPACE/openwrt
         cd openwrt
         git checkout $REPO_CHECKOUT
         make distclean
-        echo 'src-git nezha https://github.com/dysf888/OpenWRT_NeZha_V1' >> feeds.conf.default
+        # 添加Nezha feed源
+        echo 'src-git nezha https://github.com/zhiwei1998/openwrt_nezha' >> feeds.conf.default
 
     - name: Update feeds
       run: cd openwrt && ./scripts/feeds update -a
@@ -53,9 +71,16 @@ jobs:
     - name: Install feeds
       run: cd openwrt && ./scripts/feeds install -a
 
-    - name: Load custom configuration
+    - name: Load platform configuration
       run: |
-        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
+        CONFIG_FILE="configs/${{ matrix.arch }}.config"
+        if [ -e "$CONFIG_FILE" ]; then
+          cp "$CONFIG_FILE" openwrt/.config
+          cd openwrt
+          make defconfig
+        else
+          echo "Error: Configuration file $CONFIG_FILE not found!" && exit 1
+        fi
 
     - name: SSH connection to Actions
       uses: P3TERX/ssh2actions@v1.0.0
@@ -64,46 +89,79 @@ jobs:
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
 
-    - name: Download
+    - name: Download dependencies
       run: |
         cd openwrt
         make download -j$(nproc) V=s
 
-    - name: Compile the BIN
-      id: compile
+    - name: Build toolchain
       run: |
         cd openwrt
-        echo -e "$(nproc) thread compile"
         make -j$(nproc) toolchain/install
-        make -j$(nproc) package/feeds/nezha/openwrt-nezha/compile V=s
-        make -j$(nproc) package/feeds/packages/lyaml/compile V=s
-        make -j$(nproc) package/feeds/nezha/luci-app-nezha-agent-v1/compile V=s
-        mv -f $GITHUB_WORKSPACE/configs/arm64.config .config
-        make -j$(nproc) toolchain/install
-        make -j$(nproc) package/openwrt-nezha/compile V=99
-        make -j$(nproc) package/feeds/packages/lyaml/compile V=s
-        mv -f $GITHUB_WORKSPACE/configs/cortex-a53.config .config
-        make -j$(nproc) toolchain/install
-        make -j$(nproc) package/openwrt-nezha/compile V=99
-        make -j$(nproc) package/feeds/packages/lyaml/compile V=s
-        echo "::set-output name=status::success"
+
+    - name: Build NeZha packages
+      id: compile
+      timeout-minutes: 120
+      run: |
+        cd openwrt
+        echo -e "$(nproc) thread compile for ${{ matrix.arch }}"
+        echo "Build start time: $(date)"
+        # 合并构建所有需要的包，提高效率
+        # 构建并保存输出到临时文件以便调试
+        make -j$(nproc) \
+          package/feeds/nezha/openwrt-nezha/compile \
+          package/feeds/nezha/luci-app-nezha-agent-v1/compile \
+          package/feeds/packages/lyaml/compile \
+          V=s > build_output.log 2>&1
+        
+        if [ $? -eq 0 ]; then
+          echo "Build completed successfully!"
+          echo "::set-output name=status::success"
+        else
+          echo "Build failed! Showing last 150 lines of output:"
+          tail -n 150 build_output.log
+          echo "::set-output name=status::failure"
+          exit 1
+        fi
+        echo "Build end time: $(date)"
 
     - name: Upload bin directory
       uses: actions/upload-artifact@main
       if: steps.compile.outputs.status == 'success' && env.UPLOAD_BIN_DIR == 'true'
       with:
         name: OpenWrt_bin_${{ matrix.arch }}_${{ env.FILE_DATE }}
-        path: openwrt/bin
+        path: openwrt/bin/packages/${{ matrix.arch }}
 
     - name: Generate release tag
       id: tag
-      if: env.UPLOAD_RELEASE == 'true' && !cancelled()
+      if: env.UPLOAD_RELEASE == 'true' && !cancelled() && matrix.arch == 'x86_64' # 只在第一个架构运行
       run: |
-        echo "::set-output name=release_tag::$(curl -m 10 -sL "https://api.github.com/repos/nezhahq/agent/releases/latest" | grep "tag_name" | head -n 1 | awk -F ":" '{print $2}' | sed 's/\"//g;s/,//g;s/ //g')"
-        touch release.txt
+        # 获取最新的Nezha Agent版本
+        NEZHA_VERSION=$(curl -m 10 -sL "https://api.github.com/repos/nezhahq/agent/releases/latest" | grep "tag_name" | head -n 1 | awk -F ":" '{print $2}' | sed 's/"//g;s/,//g;s/ //g')
+        echo "::set-output name=release_tag::${NEZHA_VERSION}-$(date +'%Y%m%d')"
+        # 生成发布说明
+        cat > release.txt << EOF
+## NeZha Agent OpenWrt Packages Build
+
+**Build Date:** $(date +'%Y-%m-%d %H:%M:%S %Z')
+
+**Nezha Agent Version:** ${NEZHA_VERSION}
+
+**OpenWrt Version:** ${REPO_CHECKOUT}
+
+**Supported Architectures:**
+- x86_64
+- aarch64_generic
+- aarch64_cortex-a53
+
+**Packages Included:**
+- nezha-agent
+- luci-app-nezha-agent-v1
+- lyaml (dependency)
+EOF
         echo "::set-output name=status::success"
 
-    - name: Upload BIN to release
+    - name: Upload packages to release
       uses: softprops/action-gh-release@v2
       if: steps.tag.outputs.status == 'success' && !cancelled()
       env:
@@ -118,3 +176,10 @@ jobs:
           openwrt/bin/packages/aarch64_generic/packages/lyaml*
           openwrt/bin/packages/aarch64_cortex-a53/nezha/*
           openwrt/bin/packages/aarch64_cortex-a53/packages/lyaml*
+        draft: false
+        prerelease: false
+
+    - name: Cleanup
+      run: |
+        rm -rf openwrt/bin/targets
+        rm -rf openwrt/build_dir/target-*
