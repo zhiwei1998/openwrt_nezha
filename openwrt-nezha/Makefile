@@ -12,7 +12,7 @@ define Package/$(PKG_NAME)
 	SECTION:=net
 	CATEGORY:=Network
 	TITLE:=Nezha Agent is the client of the Nezha panel
-	URL:=https://github.com/naiba/nezha/
+	URL:=https://github.com/nezhahq/nezha
 endef
 
 
@@ -54,8 +54,7 @@ endif
 
 PKG_SOURCE:=nezha-agent_linux_$(PKG_ARCH_NEZHA-AGENT).zip
 
-#PKG_SOURCE_URL:=https://github.com/nezhahq/agent/releases/latest/download/
-PKG_SOURCE_URL:=https://github.com/zhiwei1998/openwrt_nezha/releases/latest/download/
+PKG_SOURCE_URL:=https://github.com/nezhahq/agent/releases/latest/download/
 
 TAR_DIR:=$(BUILD_DIR)/$(PKG_NAME)-$(PKG_VERSION)/$(PKG_NAME)-TAR
 

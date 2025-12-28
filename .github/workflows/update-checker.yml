@@ -21,7 +21,7 @@ on:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
 
@@ -32,7 +32,7 @@ jobs:
     
     - name: Compare Version
       id: cacheVer
-      uses: actions/cache@v2
+      uses: actions/cache@v4
       with:
         path: .savever
         key: HEAD-${{ steps.getVer.outputs.Version }}
@@ -44,11 +44,11 @@ jobs:
     
     - name: Trigger build
       if: steps.cacheVer.outputs.cache-hit != 'true'
-      uses: peter-evans/repository-dispatch@v1
+      uses: peter-evans/repository-dispatch@v3
       with:
-        token: ${{ secrets.ACTIONS_TRIGGER_PAT }}
+        token: ${{ secrets.GITHUB_TOKEN }}
         event-type: Source Code Update
-
+        
     - name: Delete workflow runs
       uses: GitRML/delete-workflow-runs@main
       with:
