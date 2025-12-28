@@ -41,7 +41,7 @@ env:
 
 jobs:
   build:
-    runs-on: ovh
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         arch: [x86_64, aarch64_generic, aarch64_cortex-a53]
