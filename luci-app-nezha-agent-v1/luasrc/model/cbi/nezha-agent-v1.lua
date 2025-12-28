@@ -85,13 +85,13 @@ function m.on_commit(self)
         disable_nat = uci:get("nezha-agent-v1", "config", "disable_nat") == "1",
         temperature = uci:get("nezha-agent-v1", "config", "temperature") == "1",
         skip_procs_count = uci:get("nezha-agent-v1", "config", "skip_procs_count") == "1",
+        skip_connection_count = uci:get("nezha-agent-v1", "config", "skip_connection_count") == "1",
         report_delay = tonumber(uci:get("nezha-agent-v1", "config", "report_delay")) or 3,
         ip_report_period = tonumber(uci:get("nezha-agent-v1", "config", "ip_report_period")) or 1800,
         
         -- 其他固定配置
         disable_send_query = false,
         gpu = false,
-        skip_connection_count = false,
         use_gitee_to_upgrade = false,
         use_ipv6_country_code = false,
         self_update_period = 0
@@ -166,6 +166,9 @@ o.default = config.temperature or false
 
 o = s:taboption("advanced", Flag, "skip_procs_count", translate("禁用进程数监控"))
 o.default = config.skip_procs_count or false
+
+o = s:taboption("advanced", Flag, "skip_connection_count", translate("禁用网络连接数监控"))
+o.default = config.skip_connection_count or false
 
 o = s:taboption("advanced", Value, "report_delay", translate("报告延迟(秒)"))
 o.default = config.report_delay or 3

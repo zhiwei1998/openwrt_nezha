@@ -16,6 +16,7 @@ uci -q batch <<-EOF >/dev/null
 	set nezha-agent-v1.config.insecure_tls=0
 	set nezha-agent-v1.config.temperature=0
 	set nezha-agent-v1.config.skip_procs_count=0
+	set nezha-agent-v1.config.skip_connection_count=0
 	commit nezha-agent-v1
 EOF
 
