@@ -32,7 +32,7 @@ start_service() {
 }
 
 service_triggers() {
-    procd_add_reload_trigger "nezha-agent"
+    procd_add_reload_trigger "nezha-agent-v1"
 }
 
 reload_service() {
