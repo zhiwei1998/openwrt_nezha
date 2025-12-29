@@ -272,7 +272,7 @@ o = s:taboption("basic", TextValue, "custom_config", translate("自定义配置�
 o.template = "cbi/tvalue"
 o.rows = 30
 o.wrap = "off"
-o:style("width", "100%")
+o.width = "auto"
 o.description = translate("编辑自定义配置文件内容")
 o:depends("config_mode", "custom")
 function o.cfgvalue(self, section)
