@@ -1,0 +1,32 @@
+<%+cbi/valueheader%>
+    <script src="/luci-static/resources/codemirror.js"></script>
+    <script src="/luci-static/resources/codemirror/addon/fold/foldcode.js"></script>
+    <script src="/luci-static/resources/codemirror/addon/fold/foldgutter.js"></script>
+    <script src="/luci-static/resources/codemirror/addon/fold/indent-fold.js"></script>
+    <script src="/luci-static/resources/codemirror/mode/yaml/yaml.js"></script>
+    <link rel="stylesheet" href="/luci-static/resources/codemirror/addon/fold/foldgutter.css" />
+    <link rel="stylesheet" href="/luci-static/resources/codemirror/lib/codemirror.css" />
+    <link rel="stylesheet" href="/luci-static/resources/codemirror/theme/dracula.css" />
+    <style>
+        .CodeMirror {
+            border: 1px solid #ddd;
+            height: auto;
+            min-height: 500px;
+            font-size: 14px;
+        }
+        .CodeMirror-scroll {
+            overflow-y: hidden;
+            overflow-x: auto;
+        }
+    </style>
+    <script type="text/javascript">//<![CDATA[
+        var editor = CodeMirror.fromTextArea(document.getElementById("cbid.nezha-agent-v1.config.custom_config"), {
+            mode: "text/yaml",
+            styleActiveLine: true,
+            lineNumbers: true,
+            theme: "dracula",
+            lineWrapping: true,
+            matchBrackets: true
+        });//]]>
+    </script>
+<%+cbi/valuefooter%>

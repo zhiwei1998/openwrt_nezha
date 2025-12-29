@@ -271,7 +271,6 @@ o.default = uci:get("nezha-agent-v1", "config", "config_mode") or "preset"
 o = s:taboption("basic", TextValue, "custom_config", translate("自定义配置编辑"))
 o.template = "cbi/tvalue"
 o.rows = 30
-o.cols = 120
 o.wrap = "soft"
 o.description = translate("编辑自定义配置文件内容")
 o:depends("config_mode", "custom")
@@ -294,6 +293,10 @@ function o.write(self, section, value)
     value = value:gsub("\r\n?", "\n")
     fs.writefile(custom_config_file, value)
 end
+-- codemirror
+o = s:taboption("basic", DummyValue, "")
+o.template = "nezha-agent-v1/nezha-agent_editor"
+o:depends("config_mode", "custom")
 
 o = s:taboption("basic", Value, "server", translate("面板地址"))
 o.description = translate("格式: 域名:端口 或 IP:端口")
