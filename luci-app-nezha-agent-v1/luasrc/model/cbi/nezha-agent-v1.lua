@@ -47,29 +47,19 @@ local function write_yaml(data)
 end
 
 local function read_other_yaml()
-    local f = io.open("/usr/share/nezha/other.yml", "r")
-    if f then
-        local content = f:read("*all")
-        f:close()
-        return yaml.load(content) or {}
-    end
-    return {}
+    -- 硬编码的默认配置，替代从other.yml文件读取
+    return {
+        disable_send_query = false,
+        gpu = false,
+        use_gitee_to_upgrade = false,
+        use_ipv6_country_code = false,
+        self_update_period = 0,
+        hard_drive_partition_allowlist = {},
+        nic_allowlist = {}
+    }
 end
 
-local function write_other_yaml(data)
-    local f = io.open("/usr/share/nezha/other.yml", "w")
-    if f then
-        -- 使用lyaml.dump处理复杂类型（数组和对象）
-        local yaml_content = yaml.dump({data})
-        f:write(yaml_content)
-        f:close()
-        
-        nixio.syslog("debug", "Writing to other.yml: " .. yaml_content)
-        
-        return true
-    end
-    return false
-end
+
 
 function m.on_commit(self)
     -- 从UCI配置中读取所有值
@@ -95,7 +85,7 @@ function m.on_commit(self)
         ip_report_period = tonumber(uci:get("nezha-agent-v1", "config", "ip_report_period")) or 1800
     }
     
-    -- 读取other.yml中的默认配置
+    -- 读取硬编码的默认配置
     local other_config = read_other_yaml() or {}
     
     -- 读取UCI中的其他配置项
@@ -109,10 +99,42 @@ function m.on_commit(self)
                 data[key] = uci_other_config[key] == "1"
             elseif type(value) == "number" then
                 data[key] = tonumber(uci_other_config[key]) or value
+            elseif key == "hard_drive_partition_allowlist" and type(value) == "table" then
+                -- 特殊处理硬盘分区白名单，将逗号分隔的字符串转换为数组
+                local partitions_str = uci_other_config[key]
+                if partitions_str and partitions_str ~= "" then
+                    -- 分割字符串并去除空格
+                    local partitions = {}
+                    for partition in partitions_str:gmatch("([^,%s]+)") do
+                        table.insert(partitions, partition)
+                    end
+                    if #partitions > 0 then
+                        data[key] = partitions
+                    end
+                end
+            elseif key == "nic_allowlist" and type(value) == "table" then
+                -- 特殊处理网卡白名单，将JSON字符串转换为对象
+                local nic_str = uci_other_config[key]
+                if nic_str and nic_str ~= "" then
+                    local json = require "luci.jsonc"
+                    local nic_table = json.parse(nic_str)
+                    if nic_table then
+                        -- 检查nic_table是否为空
+                        local is_empty = true
+                        for k, v in pairs(nic_table) do
+                            is_empty = false
+                            break
+                        end
+                        if not is_empty then
+                            data[key] = nic_table
+                        end
+                    end
+                end
             else
                 data[key] = uci_other_config[key]
             end
-        else
+        elseif key ~= "hard_drive_partition_allowlist" and key ~= "nic_allowlist" then
+            -- 只有非硬盘分区白名单和非网卡白名单的配置项才使用默认值
             data[key] = value
         end
     end
@@ -166,9 +188,6 @@ o.rmempty = false
 -- 高级设置
 s:tab("advanced", translate("高级设置"))
 
--- 其它设置
-s:tab("other", translate("其它设置"))
-
 o = s:taboption("advanced", Flag, "debug", translate("调试模式"))
 o.default = config.debug or false
 
@@ -211,7 +230,9 @@ local translation_map = {
     gpu = translate("GPU监控"),
     use_gitee_to_upgrade = translate("使用Gitee进行升级"),
     use_ipv6_country_code = translate("使用IPv6国家代码"),
-    self_update_period = translate("自动更新周期(秒)")
+    self_update_period = translate("自动更新周期(秒)"),
+    hard_drive_partition_allowlist = translate("硬盘分区白名单"),
+    nic_allowlist = translate("网卡白名单")
 }
 
 -- 动态生成表单字段
@@ -219,22 +240,41 @@ for key, default_value in pairs(other_config) do
     local translation = translation_map[key] or key
     local uci_value = uci_cursor:get("nezha-agent-v1", "config", key)
     
-    -- 跳过数组和对象类型的配置项（仅通过配置文件修改）
-    if type(default_value) ~= "table" then
-        if type(default_value) == "boolean" then
-            -- 布尔类型使用Flag组件
-            local o = s:taboption("other", Flag, key, translation)
-            o.default = (uci_value == "1") or default_value
-        elseif type(default_value) == "number" then
-            -- 数字类型使用Value组件
-            local o = s:taboption("other", Value, key, translation)
-            o.default = tonumber(uci_value) or default_value
-            o.datatype = "uinteger"
-        else
-            -- 其他类型使用Value组件
-            local o = s:taboption("other", Value, key, translation)
-            o.default = uci_value or default_value
+    if type(default_value) == "table" then
+        if key == "hard_drive_partition_allowlist" then
+            -- 处理数组类型的配置项（如硬盘分区白名单）
+            local o = s:taboption("advanced", Value, key, translation)
+            o.description = translate("输入多个分区路径，用逗号分隔，例如: /,/home,/data")
+            -- 如果UCI中有值，使用UCI值；否则使用空字符串
+            if uci_value then
+                o.default = uci_value
+            else
+                o.default = ""
+            end
+        elseif key == "nic_allowlist" then
+            -- 处理对象类型的配置项（如网卡白名单）
+            local o = s:taboption("advanced", Value, key, translation)
+            o.description = translate("输入JSON格式的网卡白名单，例如: {\"wan\":true,\"lan\":false}")
+            -- 如果UCI中有值，使用UCI值；否则使用空字符串
+            if uci_value then
+                o.default = uci_value
+            else
+                o.default = ""
+            end
         end
+    elseif type(default_value) == "boolean" then
+        -- 布尔类型使用Flag组件
+        local o = s:taboption("advanced", Flag, key, translation)
+        o.default = (uci_value == "1") or default_value
+    elseif type(default_value) == "number" then
+        -- 数字类型使用Value组件
+        local o = s:taboption("advanced", Value, key, translation)
+        o.default = tonumber(uci_value) or default_value
+        o.datatype = "uinteger"
+    else
+        -- 其他类型使用Value组件
+        local o = s:taboption("advanced", Value, key, translation)
+        o.default = uci_value or default_value
     end
 end
 
