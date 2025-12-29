@@ -14,7 +14,7 @@ PKG_NAME:=luci-app-nezha-agent-v1
 LUCI_TITLE:=LuCI support for Nezha Agent
 LUCI_DEPENDS:=+nezha-agent +lyaml
 LUCI_PKGARCH:=all
-PKG_VERSION:=3.2
+PKG_VERSION:=3.3
 PKG_RELEASE:=1
 PKG_MAINTAINER:=<https://github.com/zhiwei1998/openwrt_nezha>
 

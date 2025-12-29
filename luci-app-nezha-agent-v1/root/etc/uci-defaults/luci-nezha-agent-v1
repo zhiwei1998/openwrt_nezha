@@ -9,6 +9,7 @@ touch /etc/config/nz.yml
 uci -q batch <<-EOF >/dev/null
 	set nezha-agent-v1.config=config
 	set nezha-agent-v1.config.enabled=0
+	set nezha-agent-v1.config.config_mode='preset'
 	set nezha-agent-v1.config.server='THEBIGDICK'
 	set nezha-agent-v1.config.client_secret=''
 	set nezha-agent-v1.config.uuid=''
