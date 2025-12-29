@@ -271,6 +271,7 @@ o.default = uci:get("nezha-agent-v1", "config", "config_mode") or "preset"
 o = s:taboption("basic", TextValue, "custom_config", translate("自定义配置编辑"))
 o.template = "cbi/tvalue"
 o.rows = 30
+o.cols = 120
 o.wrap = "soft"
 o.description = translate("编辑自定义配置文件内容")
 o:depends("config_mode", "custom")
