@@ -73,40 +73,37 @@ local function write_yaml(data)
                 elseif type(value) == "number" then
                     yaml_content = yaml_content .. key .. ": " .. tostring(value) .. "\n"
                 elseif type(value) == "table" then
-                    if next(value) == nil then
-                        -- 空表，跳过
-                        goto continue
-                    end
-
-                    -- 检查是否为数组
-                    local is_array = true
-                    for k, _ in pairs(value) do
-                        if type(k) ~= "number" then
-                            is_array = false
-                            break
+                    -- 检查是否为空表
+                    if next(value) ~= nil then
+                        -- 检查是否为数组
+                        local is_array = true
+                        for k, _ in pairs(value) do
+                            if type(k) ~= "number" then
+                                is_array = false
+                                break
+                            end
                         end
-                    end
 
-                    if is_array then
-                        yaml_content = yaml_content .. key .. ":\n"
-                        for _, v in ipairs(value) do
-                            yaml_content = yaml_content .. " - " .. v .. "\n"
-                        end
-                    else
-                        yaml_content = yaml_content .. key .. ":\n"
-                        for k, v in pairs(value) do
-                            if type(v) == "boolean" then
-                                yaml_content = yaml_content .. "   " .. k .. ": " .. tostring(v) .. "\n"
-                            elseif type(v) == "string" then
-                                yaml_content = yaml_content .. "   " .. k .. ": \"" .. v .. "\"\n"
-                            else
-                                yaml_content = yaml_content .. "   " .. k .. ": " .. tostring(v) .. "\n"
+                        if is_array then
+                            yaml_content = yaml_content .. key .. ":\n"
+                            for _, v in ipairs(value) do
+                                yaml_content = yaml_content .. " - " .. v .. "\n"
+                            end
+                        else
+                            yaml_content = yaml_content .. key .. ":\n"
+                            for k, v in pairs(value) do
+                                if type(v) == "boolean" then
+                                    yaml_content = yaml_content .. "   " .. k .. ": " .. tostring(v) .. "\n"
+                                elseif type(v) == "string" then
+                                    yaml_content = yaml_content .. "   " .. k .. ": \"" .. v .. "\"\n"
+                                else
+                                    yaml_content = yaml_content .. "   " .. k .. ": " .. tostring(v) .. "\n"
+                                end
                             end
                         end
                     end
                 end
             end
-            ::continue::
         end
 
         f:write(yaml_content)
