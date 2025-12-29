@@ -34,8 +34,81 @@ end
 local function write_yaml(data)
     local f = io.open("/etc/config/nz.yml", "w")
     if f then
-        -- 使用lyaml.dump处理复杂类型（数组和对象）
-        local yaml_content = yaml.dump({data})
+        -- 定义配置项的输出顺序
+        local ordered_keys = {
+            "client_secret",
+            "debug",
+            "disable_auto_update",
+            "disable_command_execute",
+            "disable_force_update",
+            "disable_nat",
+            "disable_send_query",
+            "gpu",
+            "hard_drive_partition_allowlist",
+            "insecure_tls",
+            "ip_report_period",
+            "nic_allowlist",
+            "report_delay",
+            "self_update_period",
+            "server",
+            "skip_connection_count",
+            "skip_procs_count",
+            "temperature",
+            "tls",
+            "use_gitee_to_upgrade",
+            "use_ipv6_country_code",
+            "uuid"
+        }
+
+        local yaml_content = ""
+
+        -- 按照指定顺序生成YAML内容
+        for _, key in ipairs(ordered_keys) do
+            local value = data[key]
+            if value ~= nil then
+                if type(value) == "string" then
+                    yaml_content = yaml_content .. key .. ": \"" .. value .. "\"\n"
+                elseif type(value) == "boolean" then
+                    yaml_content = yaml_content .. key .. ": " .. tostring(value) .. "\n"
+                elseif type(value) == "number" then
+                    yaml_content = yaml_content .. key .. ": " .. tostring(value) .. "\n"
+                elseif type(value) == "table" then
+                    if next(value) == nil then
+                        -- 空表，跳过
+                        goto continue
+                    end
+
+                    -- 检查是否为数组
+                    local is_array = true
+                    for k, _ in pairs(value) do
+                        if type(k) ~= "number" then
+                            is_array = false
+                            break
+                        end
+                    end
+
+                    if is_array then
+                        yaml_content = yaml_content .. key .. ":\n"
+                        for _, v in ipairs(value) do
+                            yaml_content = yaml_content .. " - " .. v .. "\n"
+                        end
+                    else
+                        yaml_content = yaml_content .. key .. ":\n"
+                        for k, v in pairs(value) do
+                            if type(v) == "boolean" then
+                                yaml_content = yaml_content .. "   " .. k .. ": " .. tostring(v) .. "\n"
+                            elseif type(v) == "string" then
+                                yaml_content = yaml_content .. "   " .. k .. ": \"" .. v .. "\"\n"
+                            else
+                                yaml_content = yaml_content .. "   " .. k .. ": " .. tostring(v) .. "\n"
+                            end
+                        end
+                    end
+                end
+            end
+            ::continue::
+        end
+
         f:write(yaml_content)
         f:close()
         
@@ -113,21 +186,16 @@ function m.on_commit(self)
                     end
                 end
             elseif key == "nic_allowlist" and type(value) == "table" then
-                -- 特殊处理网卡白名单，将JSON字符串转换为对象
+                -- 特殊处理网卡白名单，将逗号分隔的字符串转换为对象
                 local nic_str = uci_other_config[key]
                 if nic_str and nic_str ~= "" then
-                    local json = require "luci.jsonc"
-                    local nic_table = json.parse(nic_str)
-                    if nic_table then
-                        -- 检查nic_table是否为空
-                        local is_empty = true
-                        for k, v in pairs(nic_table) do
-                            is_empty = false
-                            break
-                        end
-                        if not is_empty then
-                            data[key] = nic_table
-                        end
+                    local nic_table = {}
+                    -- 分割字符串并去除空格
+                    for nic in nic_str:gmatch("([^,%s]+)") do
+                        nic_table[nic] = true
+                    end
+                    if next(nic_table) ~= nil then
+                        data[key] = nic_table
                     end
                 end
             else
@@ -188,40 +256,7 @@ o.rmempty = false
 -- 高级设置
 s:tab("advanced", translate("高级设置"))
 
-o = s:taboption("advanced", Flag, "debug", translate("调试模式"))
-o.default = config.debug or false
-
-o = s:taboption("advanced", Flag, "disable_auto_update", translate("禁用自动更新"))
-o.default = config.disable_auto_update or false
-
-o = s:taboption("advanced", Flag, "disable_command_execute", translate("禁用命令执行"))
-o.default = config.disable_command_execute or false
-
-o = s:taboption("advanced", Flag, "disable_force_update", translate("禁用强制更新"))
-o.default = config.disable_force_update or false
-
-o = s:taboption("advanced", Flag, "disable_nat", translate("禁用 NAT 支持"))
-o.default = config.disable_nat or false
-
-o = s:taboption("advanced", Flag, "temperature", translate("启用温度监控"))
-o.default = config.temperature or false
-
-o = s:taboption("advanced", Flag, "skip_procs_count", translate("禁用进程数监控"))
-o.default = config.skip_procs_count or false
-
-o = s:taboption("advanced", Flag, "skip_connection_count", translate("禁用网络连接数监控"))
-o.default = config.skip_connection_count or false
-
-o = s:taboption("advanced", Value, "report_delay", translate("报告延迟(秒)"))
-o.default = config.report_delay or 3
-o.datatype = "uinteger"
-
-o = s:taboption("advanced", Value, "ip_report_period", translate("IP报告周期(秒)"))
-o.default = config.ip_report_period or 1800
-o.datatype = "uinteger"
-
--- 动态生成其它设置表单字段
-local other_config = read_other_yaml() or {}
+-- 从UCI读取配置
 local uci_cursor = require "luci.model.uci".cursor()
 
 -- 配置项的中文翻译映射
@@ -231,51 +266,83 @@ local translation_map = {
     use_gitee_to_upgrade = translate("使用Gitee进行升级"),
     use_ipv6_country_code = translate("使用IPv6国家代码"),
     self_update_period = translate("自动更新周期(秒)"),
-    hard_drive_partition_allowlist = translate("硬盘分区白名单"),
-    nic_allowlist = translate("网卡白名单")
+    hard_drive_partition_allowlist = translate("需要监控的硬盘分区列表"),
+    nic_allowlist = translate("需要监控的网卡")
 }
 
--- 动态生成表单字段
-for key, default_value in pairs(other_config) do
-    local translation = translation_map[key] or key
-    local uci_value = uci_cursor:get("nezha-agent-v1", "config", key)
-    
-    if type(default_value) == "table" then
-        if key == "hard_drive_partition_allowlist" then
-            -- 处理数组类型的配置项（如硬盘分区白名单）
-            local o = s:taboption("advanced", Value, key, translation)
-            o.description = translate("输入多个分区路径，用逗号分隔，例如: /,/home,/data")
-            -- 如果UCI中有值，使用UCI值；否则使用空字符串
-            if uci_value then
-                o.default = uci_value
-            else
-                o.default = ""
-            end
-        elseif key == "nic_allowlist" then
-            -- 处理对象类型的配置项（如网卡白名单）
-            local o = s:taboption("advanced", Value, key, translation)
-            o.description = translate("输入JSON格式的网卡白名单，例如: {\"wan\":true,\"lan\":false}")
-            -- 如果UCI中有值，使用UCI值；否则使用空字符串
-            if uci_value then
-                o.default = uci_value
-            else
-                o.default = ""
-            end
-        end
-    elseif type(default_value) == "boolean" then
-        -- 布尔类型使用Flag组件
-        local o = s:taboption("advanced", Flag, key, translation)
-        o.default = (uci_value == "1") or default_value
-    elseif type(default_value) == "number" then
-        -- 数字类型使用Value组件
-        local o = s:taboption("advanced", Value, key, translation)
-        o.default = tonumber(uci_value) or default_value
-        o.datatype = "uinteger"
-    else
-        -- 其他类型使用Value组件
-        local o = s:taboption("advanced", Value, key, translation)
-        o.default = uci_value or default_value
-    end
-end
+-- 按照指定顺序添加所有高级设置选项
+
+-- debug
+o = s:taboption("advanced", Flag, "debug", translate("调试模式"))
+o.default = (uci_cursor:get("nezha-agent-v1", "config", "debug") == "1") or false
+
+-- disable_auto_update
+o = s:taboption("advanced", Flag, "disable_auto_update", translate("禁用自动更新"))
+o.default = (uci_cursor:get("nezha-agent-v1", "config", "disable_auto_update") == "1") or false
+
+-- disable_command_execute
+o = s:taboption("advanced", Flag, "disable_command_execute", translate("禁用命令执行"))
+o.default = (uci_cursor:get("nezha-agent-v1", "config", "disable_command_execute") == "1") or false
+
+-- disable_force_update
+o = s:taboption("advanced", Flag, "disable_force_update", translate("禁用强制更新"))
+o.default = (uci_cursor:get("nezha-agent-v1", "config", "disable_force_update") == "1") or false
+
+-- disable_nat
+o = s:taboption("advanced", Flag, "disable_nat", translate("禁用 NAT 支持"))
+o.default = (uci_cursor:get("nezha-agent-v1", "config", "disable_nat") == "1") or false
+
+-- disable_send_query
+o = s:taboption("advanced", Flag, "disable_send_query", translation_map["disable_send_query"])
+o.default = (uci_cursor:get("nezha-agent-v1", "config", "disable_send_query") == "1") or false
+
+-- gpu
+o = s:taboption("advanced", Flag, "gpu", translation_map["gpu"])
+o.default = (uci_cursor:get("nezha-agent-v1", "config", "gpu") == "1") or false
+
+-- hard_drive_partition_allowlist
+o = s:taboption("advanced", Value, "hard_drive_partition_allowlist", translation_map["hard_drive_partition_allowlist"])
+o.description = translate("输入多个分区路径，用逗号分隔，例如: /,/home,/data")
+o.default = uci_cursor:get("nezha-agent-v1", "config", "hard_drive_partition_allowlist") or ""
+
+-- ip_report_period
+o = s:taboption("advanced", Value, "ip_report_period", translate("IP报告周期(秒)"))
+o.default = tonumber(uci_cursor:get("nezha-agent-v1", "config", "ip_report_period")) or 1800
+o.datatype = "uinteger"
+
+-- nic_allowlist
+o = s:taboption("advanced", Value, "nic_allowlist", translation_map["nic_allowlist"])
+o.description = translate("输入网卡名称，用逗号分隔，例如: wan,lan")
+o.default = uci_cursor:get("nezha-agent-v1", "config", "nic_allowlist") or ""
+
+-- report_delay
+o = s:taboption("advanced", Value, "report_delay", translate("报告延迟(秒)"))
+o.default = tonumber(uci_cursor:get("nezha-agent-v1", "config", "report_delay")) or 3
+o.datatype = "uinteger"
+
+-- self_update_period
+o = s:taboption("advanced", Value, "self_update_period", translation_map["self_update_period"])
+o.default = tonumber(uci_cursor:get("nezha-agent-v1", "config", "self_update_period")) or 0
+o.datatype = "uinteger"
+
+-- skip_connection_count
+o = s:taboption("advanced", Flag, "skip_connection_count", translate("禁用网络连接数监控"))
+o.default = (uci_cursor:get("nezha-agent-v1", "config", "skip_connection_count") == "1") or false
+
+-- skip_procs_count
+o = s:taboption("advanced", Flag, "skip_procs_count", translate("禁用进程数监控"))
+o.default = (uci_cursor:get("nezha-agent-v1", "config", "skip_procs_count") == "1") or false
+
+-- temperature
+o = s:taboption("advanced", Flag, "temperature", translate("启用温度监控"))
+o.default = (uci_cursor:get("nezha-agent-v1", "config", "temperature") == "1") or false
+
+-- use_gitee_to_upgrade
+o = s:taboption("advanced", Flag, "use_gitee_to_upgrade", translation_map["use_gitee_to_upgrade"])
+o.default = (uci_cursor:get("nezha-agent-v1", "config", "use_gitee_to_upgrade") == "1") or false
+
+-- use_ipv6_country_code
+o = s:taboption("advanced", Flag, "use_ipv6_country_code", translation_map["use_ipv6_country_code"])
+o.default = (uci_cursor:get("nezha-agent-v1", "config", "use_ipv6_country_code") == "1") or false
 
 return m
